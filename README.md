@@ -117,7 +117,9 @@ voice-journey/
 
 1. **TorchCodec Warning**: This is usually harmless and doesn't affect diarization functionality.
 
-2. **CUDA Not Available**: Ensure your GPU drivers are up to date and CUDA is properly installed.
+2. **TensorFloat-32 (TF32) Warning**: This has been suppressed in the code for better performance. TF32 provides faster computation with minimal precision loss.
+
+3. **CUDA Not Available**: Ensure your GPU drivers are up to date and CUDA is properly installed.
 
 3. **Hugging Face Access Denied**: Make sure you have requested access to all required models and your token is valid.
 
