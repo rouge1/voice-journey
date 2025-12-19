@@ -31,7 +31,6 @@ print(f"Loading Whisper {model_size} transcription model on {device}...")
 transcriber = WhisperModel(model_size, device=device, compute_type="float16")
 
 # ==================== PROCESS AUDIO ====================
-audio_file = "test_clip.wav"  # ← Change to your actual file
 
 print(f"\nLoading audio: {audio_file}")
 waveform, sample_rate = torchaudio.load(audio_file)
