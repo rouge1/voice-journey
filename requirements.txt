@@ -1,28 +1,20 @@
-# Voice Journey - Core Dependencies
+# Voice Journey - Python Dependencies
 # Install with: pip install -r requirements.txt
-# 
-# Note: For full environment reproduction, use conda_packages.txt instead:
-#   conda install --file conda_packages.txt
 #
-# Date: December 21, 2025
-
-# PyTorch (install separately for CUDA support)
-# See: https://pytorch.org/get-started/locally/
-# torch>=2.0.0
-# torchaudio>=2.0.0
+# Note: PyTorch packages should be installed via conda for CUDA support:
+#   conda install -c pytorch -c nvidia pytorch torchaudio pytorch-cuda=12.4
+#
+# Date: January 5, 2026
 
 # Speaker diarization
-pyannote-audio>=4.0.0
+pyannote-audio>=4.0.3
 
 # Speech transcription
-faster-whisper>=1.0.0
+faster-whisper>=1.2.1
 
-# Hugging Face integration
-huggingface-hub>=0.20.0
-transformers>=4.30.0
+# Hugging Face integration (used by pyannote-audio)
+huggingface-hub>=0.36.0
+transformers>=4.57.3
 
-# Audio processing
-soundfile>=0.12.0
-
-# Utilities
-tqdm>=4.60.0
+# Audio processing (used by torchaudio and pyannote)
+soundfile>=0.13.1

@@ -4,38 +4,102 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 import sys
 import os
+import argparse
+import socket
+
+# Check network connectivity when --update is used
+def check_network_connectivity():
+    """Quick check if we can reach the internet."""
+    try:
+        # Try to connect to Google DNS with short timeout
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        return True
+    except OSError:
+        return False
+
+# Parse command-line arguments early to set offline mode before importing models
+parser = argparse.ArgumentParser(description='Process audio file with speaker diarization and transcription.')
+parser.add_argument('audio_file', nargs='?', help='Path to the audio file to process (optional with --update)')
+parser.add_argument('--model_size', default='medium', choices=['tiny', 'small', 'medium', 'large-v3'], 
+                    help='Whisper model size (default: medium)')
+parser.add_argument('--update', action='store_true', 
+                    help='Allow online updates for models (checks connectivity first)')
+parser.add_argument('--list', action='store_true', 
+                    help='List available models and their cache status')
+
+args = parser.parse_args()
+
+# Check network connectivity if --update is requested
+if args.update and not check_network_connectivity():
+    print("\n" + "="*50)
+    print("No internet connection detected.")
+    print("Cannot check for model updates.")
+    if not args.audio_file:
+        print("Exiting - no audio file to process.")
+        sys.exit(0)
+    print("Using cached models only.")
+    print("Connect to internet and try again to check for updates.")
+    print("="*50)
+    # Force offline mode
+    os.environ["HF_HUB_OFFLINE"] = "1"
+
+# Handle --list (exit early)
+if args.list:
+    import os
+    cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+    
+    print("Available models and cache status:")
+    print()
+    
+    # Check pyannote model
+    pyannote_path = os.path.join(cache_dir, "models--pyannote--speaker-diarization-3.1")
+    pyannote_status = "✅ Cached" if os.path.exists(pyannote_path) else "❌ Not cached"
+    print(f"Speaker Diarization: {pyannote_status}")
+    print("  pyannote/speaker-diarization-3.1")
+    print()
+    
+    # Check Whisper models
+    print("Whisper Transcription Models:")
+    whisper_sizes = ['tiny', 'small', 'medium', 'large-v3']
+    size_info = {
+        'tiny': 'Fastest, least accurate (~39 MB)',
+        'small': 'Balanced speed/accuracy (~100 MB)', 
+        'medium': 'Default, good quality (~484 MB)',
+        'large-v3': 'Best accuracy, high memory (~1.5 GB)'
+    }
+    
+    for size in whisper_sizes:
+        model_path = os.path.join(cache_dir, f"models--Systran--faster-whisper-{size}")
+        status = "✅ Cached" if os.path.exists(model_path) else "❌ Not cached"
+        print(f"  {size:<8} - {size_info[size]:<35} {status}")
+    
+    print()
+    print("Usage: python audio.py <audio_file> --model_size <size>")
+    print("Use --update to download missing models")
+    sys.exit(0)
+
+# Set offline mode by default, unless --update is specified
+if not args.update:
+    os.environ["HF_HUB_OFFLINE"] = "1"  # Force offline mode to use cached models
+
 import torch
 import torchaudio
 from pyannote.audio import Pipeline
 from faster_whisper import WhisperModel
 from datetime import timedelta
 
-# Enable TF32 for better performance (slight precision trade-off)
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
+# Set variables from parsed args
+audio_file = args.audio_file
+model_size = args.model_size
 
-# ==================== CONFIGURATION ====================
-# Audio file to process (pass as command-line argument or set default)
-if len(sys.argv) > 1:
-    audio_file = sys.argv[1]
-else:
-    audio_file = "audio.wav"  # Default audio file
-
-# Model size (optional second argument: tiny, small, medium, large-v3)
-if len(sys.argv) > 2:
-    model_size = sys.argv[2]
-    valid_sizes = ["tiny", "small", "medium", "large-v3"]
-    if model_size not in valid_sizes:
-        print(f"Error: Invalid model size '{model_size}'. Choose from: {', '.join(valid_sizes)}")
-        sys.exit(1)
-else:
-    model_size = "medium"  # Default model size
-
-# Validate audio file exists
-if not os.path.exists(audio_file):
+# Handle update-only mode
+if args.update and not audio_file:
+    print("Checking for model updates...")
+elif not audio_file:
+    print("Error: Audio file required. Usage: python audio.py <audio_file> [--model_size SIZE] [--update]")
+    sys.exit(1)
+elif not os.path.exists(audio_file):
     print(f"Error: Audio file '{audio_file}' not found!")
-    print("Usage: python audio.py <path_to_audio_file> [model_size]")
-    print("Model sizes: tiny, small, medium, large-v3")
     sys.exit(1)
 
 # ==================== SETUP ====================
@@ -63,6 +127,23 @@ except Exception as e:
         print("Downloading model (this only needs to happen once)...")
         diarizer = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=hf_token)
         print("Model cached successfully! Token won't be needed again.")
+    elif args.update and ("Temporary failure in name resolution" in str(e) or 
+                          "Max retries exceeded" in str(e) or 
+                          "Connection refused" in str(e) or
+                          "Name resolution failure" in str(e) or
+                          "MaxRetryError" in str(type(e))):
+        print("\n" + "="*50)
+        print("Network connection error while checking for updates.")
+        print("This is expected if you're offline.")
+        print("Using cached models - no updates downloaded.")
+        print("Run with internet connection to check for updates.")
+        print("="*50)
+        # Try to load from cache
+        try:
+            diarizer = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
+        except Exception as cache_e:
+            print(f"Error loading cached model: {cache_e}")
+            sys.exit(1)
     else:
         raise e
 diarizer.to(torch.device("cuda"))
@@ -72,7 +153,29 @@ diarizer.to(torch.device("cuda"))
 device = "cpu"  # Use CPU for transcription to avoid cuDNN issues
 compute_type = "int8"  # Use int8 for CPU
 print(f"Loading Whisper {model_size} transcription model on {device}...")
-transcriber = WhisperModel(model_size, device=device, compute_type=compute_type)
+try:
+    transcriber = WhisperModel(model_size, device=device, compute_type=compute_type)
+except Exception as e:
+    if args.update and ("Temporary failure in name resolution" in str(e) or 
+                        "Max retries exceeded" in str(e) or 
+                        "Connection refused" in str(e) or
+                        "Name resolution failure" in str(e) or
+                        "MaxRetryError" in str(type(e))):
+        print("\n" + "="*50)
+        print("Network connection error while checking for Whisper updates.")
+        print("This is expected if you're offline.")
+        print("Using cached model - no updates downloaded.")
+        print("Run with internet connection to check for updates.")
+        print("="*50)
+        # Try to load from cache - WhisperModel should handle this automatically
+        transcriber = WhisperModel(model_size, device=device, compute_type=compute_type)
+    else:
+        raise e
+
+# If update-only mode, exit after loading models
+if args.update and not audio_file:
+    print("Model update check complete! All models are loaded and ready.")
+    sys.exit(0)
 
 # ==================== PROCESS AUDIO ====================
 
