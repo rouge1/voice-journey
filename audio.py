@@ -188,8 +188,30 @@ if waveform.shape[0] > 1:
 
 audio_in_memory = {"waveform": waveform, "sample_rate": sample_rate}
 
+# Calculate and display audio duration
+duration_seconds = waveform.shape[1] / sample_rate
+duration = str(timedelta(seconds=int(duration_seconds)))
+print(f"Audio duration: {duration}")
+
 print("Running diarization...")
 diarization = diarizer(audio_in_memory)
+
+# Build speaker map for timeline and alignment
+speaker_map = {}
+for turn, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True):
+    for t in range(int(turn.start * 10), int(turn.end * 10)):  # 100ms steps
+        speaker_map[round(t / 10, 2)] = speaker
+
+# Create timeline visualization
+print("\nGenerating timeline visualization...")
+timeline = []
+for t in range(0, int(duration_seconds)):
+    has_speaker = any(speaker_map.get(round(sub_t / 10, 2), None) 
+                     for sub_t in range(t*10, (t+1)*10) 
+                     if speaker_map.get(round(sub_t / 10, 2), None) not in [None, "UNKNOWN"])
+    timeline.append("x" if has_speaker else "_")
+timeline_str = "".join(timeline)
+print(f"Timeline (1 char = 1 sec): {timeline_str}")
 
 print("Running transcription...")
 try:
@@ -202,11 +224,7 @@ except RuntimeError as e:
         raise e
 
 # ==================== ALIGN & PRINT ====================
-# Build a speaker map per time segment
-speaker_map = {}
-for turn, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True):
-    for t in range(int(turn.start * 10), int(turn.end * 10)):  # 100ms steps
-        speaker_map[round(t / 10, 2)] = speaker
+# Speaker map already built above
 
 print("\n" + "="*60)
 print("SPEAKER-LABELED TRANSCRIPT")
