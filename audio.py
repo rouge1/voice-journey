@@ -20,14 +20,14 @@ def check_network_connectivity():
 # Parse command-line arguments early to set offline mode before importing models
 parser = argparse.ArgumentParser(description='Process audio file with speaker diarization and transcription.')
 parser.add_argument('audio_file', nargs='?', help='Path to the audio file to process (optional with --update)')
-parser.add_argument('--model_size', default='medium', choices=['tiny', 'small', 'medium', 'large-v3'], 
+parser.add_argument('--model_size', default='medium', choices=['tiny', 'small', 'medium', 'large-v3', 'turbo'],
                     help='Whisper model size (default: medium)')
 parser.add_argument('--update', action='store_true', 
                     help='Allow online updates for models (checks connectivity first)')
-parser.add_argument('--list', action='store_true', 
+parser.add_argument('--list', action='store_true',
                     help='List available models and their cache status')
-parser.add_argument('--no-speaker-analysis', action='store_true',
-                    help='Disable Voxtral speaker characteristics analysis')
+parser.add_argument('--translate', action='store_true',
+                    help='Translate audio to English (default: transcribe in original language)')
 
 args = parser.parse_args()
 
@@ -59,39 +59,32 @@ if args.list:
     print(f"Speaker Diarization: {pyannote_status}")
     print("  pyannote/speaker-diarization-3.1")
     print()
-    
-    # Check Voxtral model
-    voxtral_path = os.path.join(cache_dir, "models--mistralai--Voxtral-Mini-3B-2507")
-    voxtral_status = "✅ Cached" if os.path.exists(voxtral_path) else "❌ Not cached"
-    print(f"Speaker Analysis: {voxtral_status}")
-    print("  mistralai/Voxtral-Mini-3B-2507")
-    print()
-    
+
     # Check Whisper models
     print("Whisper Transcription Models:")
-    whisper_sizes = ['tiny', 'small', 'medium', 'large-v3']
+    whisper_sizes = ['tiny', 'small', 'medium', 'large-v3', 'turbo']
     size_info = {
         'tiny': 'Fastest, least accurate (~39 MB)',
-        'small': 'Balanced speed/accuracy (~100 MB)', 
+        'small': 'Balanced speed/accuracy (~100 MB)',
         'medium': 'Default, good quality (~484 MB)',
-        'large-v3': 'Best accuracy, high memory (~1.5 GB)'
+        'large-v3': 'Best accuracy, high memory (~1.5 GB)',
+        'turbo': 'Fast & accurate, v3 optimized (~809 MB)'
     }
-    
+
     for size in whisper_sizes:
         model_path = os.path.join(cache_dir, f"models--Systran--faster-whisper-{size}")
         status = "✅ Cached" if os.path.exists(model_path) else "❌ Not cached"
         print(f"  {size:<8} - {size_info[size]:<35} {status}")
-    
+
     print()
     print("Usage: python audio.py <audio_file> [options]")
     print("Options:")
-    print("  --model_size <size>    Whisper model size (tiny/small/medium/large-v3)")
-    print("  --no-speaker-analysis  Skip Voxtral speaker characteristics analysis")
-    print("  --update              Download missing models")
+    print("  --model_size <size>      Whisper model size (tiny/small/medium/large-v3/turbo)")
+    print("  --update                 Download missing models")
     sys.exit(0)
 
-# Set offline mode by default, unless --update is specified OR Voxtral analysis is enabled
-if not args.update and args.no_speaker_analysis:
+# Set offline mode by default, unless --update is specified
+if not args.update:
     os.environ["HF_HUB_OFFLINE"] = "1"  # Force offline mode to use cached models
 
 import torch
@@ -99,11 +92,6 @@ import torchaudio
 from pyannote.audio import Pipeline
 from faster_whisper import WhisperModel
 from datetime import timedelta
-
-# Voxtral imports for speaker analysis (default enabled)
-from transformers import AutoProcessor, VoxtralForConditionalGeneration
-import soundfile as sf
-import tempfile
 
 # Set variables from parsed args
 audio_file = args.audio_file
@@ -189,58 +177,6 @@ except Exception as e:
     else:
         raise e
 
-# Load Voxtral model for speaker analysis (default enabled)
-voxtral_processor = None
-voxtral_model = None
-if not args.no_speaker_analysis:
-    print("\nLoading Voxtral model for speaker analysis...")
-    model_id = "mistralai/Voxtral-Mini-3B-2507"
-    
-    try:
-        voxtral_processor = AutoProcessor.from_pretrained(model_id)
-        voxtral_model = VoxtralForConditionalGeneration.from_pretrained(
-            model_id,
-            dtype=torch.float16,
-            device_map="auto"
-        )
-        print("✓ Voxtral model loaded")
-    except Exception as e:
-        if args.update and ("Temporary failure in name resolution" in str(e) or 
-                            "Max retries exceeded" in str(e) or 
-                            "Connection refused" in str(e) or
-                            "OfflineModeIsEnabled" in str(type(e).__name__)):
-            print("\n" + "="*50)
-            print("Network connection error or offline mode enabled.")
-            print("Voxtral model not cached. Run with internet and --update to download.")
-            print("Continuing without speaker analysis...")
-            print("="*50)
-            voxtral_processor = None
-            voxtral_model = None
-        else:
-            raise e
-
-def analyze_speaker_segment(audio_file_path, voxtral_processor, voxtral_model):
-    """Analyze a speaker segment for gender, age, and emotional state."""
-    try:
-        conversation = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "audio", "path": audio_file_path},
-                    {"type": "text", "text": "Briefly estimate the speaker's gender, approximate age, and emotional state. Be concise."}
-                ]
-            }
-        ]
-        
-        inputs = voxtral_processor.apply_chat_template(conversation, return_tensors="pt", return_dict=True)
-        inputs = {k: v.to(voxtral_model.device) for k, v in inputs.items()}
-        
-        outputs = voxtral_model.generate(**inputs, max_new_tokens=256)
-        response = voxtral_processor.decode(outputs[0], skip_special_tokens=True)
-        return response
-    except Exception as e:
-        return f"Error analyzing segment: {str(e)}"
-
 # If update-only mode, exit after loading models
 if args.update and not audio_file:
     print("Model update check complete! All models are loaded and ready.")
@@ -289,7 +225,8 @@ print(f"Timeline (1 char = 1 sec): {timeline_str}")
 
 print("Running transcription...")
 try:
-    segments, info = transcriber.transcribe(audio_file, beam_size=1, vad_filter=True, language="en")  # beam_size=1 saves memory
+    task = "translate" if args.translate else "transcribe"
+    segments, info = transcriber.transcribe(audio_file, beam_size=1, vad_filter=True, task=task)
 except RuntimeError as e:
     if "out of memory" in str(e).lower():
         print("GPU out of memory! Try using a smaller model (change model_size to 'small' or 'tiny') or set device='cpu'")
@@ -327,62 +264,14 @@ for seg in segments:
     end_time = str(timedelta(seconds=int(end)))
     print(f"[{start_time} - {end_time}] {text}")
 
-print("\nTranscription language:", info.language)
+if args.translate:
+    print(f"\nTranslated from: {info.language} → en")
+else:
+    print(f"\nTranscription language: {info.language}")
 
-# ==================== SPEAKER ANALYSIS ====================
-if voxtral_processor and voxtral_model:
-    print("\n" + "="*60)
-    print("SPEAKER CHARACTERISTICS ANALYSIS")
-    print("="*60)
-    
-    # Get unique speakers and their segments
-    speakers = {}
-    for turn, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True):
-        if speaker not in speakers:
-            speakers[speaker] = []
-        speakers[speaker].append((turn.start, turn.end))
-    
-    # Analyze each speaker
-    for speaker, turns in speakers.items():
-        print(f"\n{speaker}:")
-        
-        # Use the first substantial segment (at least 3 seconds) or the longest one
-        suitable_segments = [(s, e) for s, e in turns if e - s >= 3.0]
-        if not suitable_segments:
-            suitable_segments = turns
-        
-        start, end = max(suitable_segments, key=lambda x: x[1] - x[0])
-        
-        # Extract audio segment
-        start_sample = int(start * sample_rate)
-        end_sample = int(end * sample_rate)
-        segment_waveform = waveform[:, start_sample:end_sample]
-        
-        # Save temporary file for analysis
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-            tmp_path = tmp_file.name
-            torchaudio.save(tmp_path, segment_waveform, sample_rate)
-        
-        try:
-            print(f"  Analyzing segment from {timedelta(seconds=int(start))} to {timedelta(seconds=int(end))}...")
-            analysis = analyze_speaker_segment(tmp_path, voxtral_processor, voxtral_model)
-            print(f"  Analysis: {analysis}")
-        finally:
-            # Clean up temp file
-            os.remove(tmp_path)
-
-# Clear GPU memory after speaker analysis
-torch.cuda.empty_cache()
-
-# Clean up Voxtral models to free memory
-if voxtral_processor:
-    del voxtral_processor
-if voxtral_model:
-    del voxtral_model
-
-# Clean up remaining models
+# Clean up models
 del diarizer
 del transcriber
 torch.cuda.empty_cache()
 
-print("Processing complete! 🚀")
+print("\nProcessing complete!")

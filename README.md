@@ -77,6 +77,7 @@ python audio.py [OPTIONS] [AUDIO_FILE]
 Options:
   AUDIO_FILE              Path to audio file to process (optional with --update)
   --model_size SIZE       Whisper model size: tiny, small, medium, large-v3 (default: medium)
+  --translate             Translate audio to English (auto-detects source language)
   --update                Check for online model updates (requires internet)
   --list                  Show available models and cache status
   -h, --help             Show help message
@@ -99,6 +100,9 @@ Examples:
   
   # Combine options
   python audio.py audio.wav --model_size small --update
+
+  # Translate Spanish/French/etc. audio to English
+  python audio.py spanish_audio.wav --translate
 ```
 
 ### Model Sizes
