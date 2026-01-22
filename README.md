@@ -76,7 +76,7 @@ python audio.py [OPTIONS] [AUDIO_FILE]
 
 Options:
   AUDIO_FILE              Path to audio file to process (optional with --update)
-  --model_size SIZE       Whisper model size: tiny, small, medium, large-v3 (default: medium)
+  --model_size SIZE       Whisper model size: tiny, small, medium, large-v3, turbo (default: medium)
   --translate             Translate audio to English (auto-detects source language)
   --update                Check for online model updates (requires internet)
   --list                  Show available models and cache status
@@ -88,6 +88,7 @@ Examples:
   
   # Specify model size
   python audio.py audio.wav --model_size large-v3
+  python audio.py audio.wav --model_size turbo
   
   # Check for updates and process
   python audio.py audio.wav --update
@@ -113,6 +114,7 @@ Examples:
 | `small` | ~484 MB | Fast | Good | Balance of speed/quality |
 | `medium` | ~1.5 GB | Medium | Better | Default, good quality |
 | `large-v3` | ~2.9 GB | Slowest | Best | Maximum accuracy |
+| `turbo` | ~809 MB | Fast | High | Optimized v3 performance |
 
 ### Offline vs Online Operation
 
@@ -135,6 +137,7 @@ Whisper Transcription Models:
   small    - Balanced speed/accuracy (~484 MB)   ✅ Cached
   medium   - Default, good quality (~1.5 GB)     ✅ Cached
   large-v3 - Best accuracy, high memory (~2.9 GB) ✅ Cached
+  turbo    - Fast & accurate, v3 optimized (~809 MB) ✅ Cached
 ```
 
 ### First Run (Token Required)
@@ -241,11 +244,17 @@ SPEAKER-LABELED TRANSCRIPT
 ```
 voice-journey/
 ├── README.md              # Comprehensive documentation
+├── CLAUDE.md              # Guidance for Claude Code AI assistant
 ├── audio.py               # Main diarization/transcription script
 ├── requirements.txt       # Python pip dependencies
 ├── conda_packages.txt     # Conda environment packages
-└── test.py               # Legacy test script (deprecated)
+├── sessions/              # Sample audio files for testing
+└── __pycache__/           # Python bytecode cache (auto-generated)
 ```
+
+## CLAUDE.md
+
+This project includes a `CLAUDE.md` file that provides specific guidance for the Claude Code AI assistant (claude.ai/code) when working with this codebase. It contains project overview, common commands, architecture details, and development notes to help AI assistants understand and contribute to the project effectively.
 
 ## Troubleshooting
 

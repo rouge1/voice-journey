@@ -65,9 +65,9 @@ if args.list:
     whisper_sizes = ['tiny', 'small', 'medium', 'large-v3', 'turbo']
     size_info = {
         'tiny': 'Fastest, least accurate (~39 MB)',
-        'small': 'Balanced speed/accuracy (~100 MB)',
-        'medium': 'Default, good quality (~484 MB)',
-        'large-v3': 'Best accuracy, high memory (~1.5 GB)',
+        'small': 'Balanced speed/accuracy (~484 MB)',
+        'medium': 'Default, good quality (~1.5 GB)',
+        'large-v3': 'Best accuracy, high memory (~2.9 GB)',
         'turbo': 'Fast & accurate, v3 optimized (~809 MB)'
     }
 
