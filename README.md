@@ -244,17 +244,13 @@ SPEAKER-LABELED TRANSCRIPT
 ```
 voice-journey/
 ├── README.md              # Comprehensive documentation
-├── CLAUDE.md              # Guidance for Claude Code AI assistant
+├── CLAUDE.md              # AI assistant guidance
 ├── audio.py               # Main diarization/transcription script
 ├── requirements.txt       # Python pip dependencies
 ├── conda_packages.txt     # Conda environment packages
 ├── sessions/              # Sample audio files for testing
 └── __pycache__/           # Python bytecode cache (auto-generated)
 ```
-
-## CLAUDE.md
-
-This project includes a `CLAUDE.md` file that provides specific guidance for the Claude Code AI assistant (claude.ai/code) when working with this codebase. It contains project overview, common commands, architecture details, and development notes to help AI assistants understand and contribute to the project effectively.
 
 ## Troubleshooting
 
