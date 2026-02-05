@@ -185,21 +185,16 @@ if args.update and not audio_file:
 # ==================== PROCESS AUDIO ====================
 
 print(f"\nLoading audio: {audio_file}")
-waveform, sample_rate = torchaudio.load(audio_file)
-
-# Convert to mono if needed
-if waveform.shape[0] > 1:
-    waveform = waveform.mean(dim=0, keepdim=True)
-
-audio_in_memory = {"waveform": waveform, "sample_rate": sample_rate}
-
-# Calculate and display audio duration
-duration_seconds = waveform.shape[1] / sample_rate
-duration = str(timedelta(seconds=int(duration_seconds)))
-print(f"Audio duration: {duration}")
 
 print("Running diarization...")
-diarization = diarizer(audio_in_memory)
+# Pass file path directly - pyannote handles loading internally
+diarization = diarizer(audio_file)
+
+# Get audio duration from diarization results
+timeline_extent = diarization.speaker_diarization.get_timeline().extent()
+duration_seconds = timeline_extent.duration
+duration = str(timedelta(seconds=int(duration_seconds)))
+print(f"Audio duration: {duration} ({duration_seconds:.2f} seconds)")
 
 # Clear GPU memory after diarization
 torch.cuda.empty_cache()
