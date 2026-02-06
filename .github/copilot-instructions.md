@@ -5,35 +5,32 @@ Voice Journey is a Python CLI tool that combines speaker diarization (identifyin
 
 ## Architecture & Key Patterns
 
+### File Structure
+- `models.py` — Shared model constants, cache paths, `list_models()` utility
+- `setup.py` — Online: downloads models, guides HF token setup
+- `audio.py` — Offline: processes audio, assumes models are cached
+
 ### Processing Pipeline
 ```
 Audio Input → Pyannote Diarization (GPU) → Speaker Timeline
                     ↓
          Whisper Transcription (CPU) → Transcript Alignment
 ```
+- **Online/Offline Separation**: `setup.py` handles downloads, `audio.py` runs fully offline
 - **GPU/CPU Separation**: Diarization runs on CUDA, transcription on CPU with int8 quantization to avoid cuDNN conflicts
-- **Memory Management**: Explicit `torch.cuda.empty_cache()` between stages (see `audio.py:180,220`)
-- **Offline-First**: Models cached in `~/.cache/huggingface/hub/`, internet only for first download or `--update`
+- **Memory Management**: Explicit `torch.cuda.empty_cache()` between stages
+- **Pre-flight Cache Checks**: `audio.py` verifies models exist before heavy imports
+- **Early `--list` Handling**: Checked via `sys.argv` before argparse (since `audio_file` is required)
 
-### Early Argument Parsing Pattern
-Arguments parsed before heavy imports to set environment variables:
+### Pyannote API Usage
+The diarization pipeline returns an `Annotation` directly:
 ```python
-# Parse args first (audio.py:15-25)
-args = parser.parse_args()
-if not args.update:
-    os.environ["HF_HUB_OFFLINE"] = "1"  # Force offline mode
-# Then import heavy libraries (audio.py:75+)
-```
-
-### Interactive Token Handling
-For gated Hugging Face models, prompt user interactively on first run:
-```python
-try:
-    diarizer = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
-except Exception as e:
-    if "401" in str(e):  # Token required
-        hf_token = input("Enter your Hugging Face token: ")
-        diarizer = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=hf_token)
+diarization = diarizer(audio_file)
+# Correct:
+diarization.itertracks(yield_label=True)
+diarization.get_timeline().extent()
+# Wrong (old API / never existed):
+# diarization.speaker_diarization.itertracks(...)
 ```
 
 ## Critical Workflows
@@ -48,29 +45,22 @@ pip install -r requirements.txt          # Remaining deps
 
 ### Command Line Interface
 ```bash
-usage: audio.py [-h] [--model_size {tiny,small,medium,large-v3,turbo}] [--update] [--list]
-                [--translate]
-                [audio_file]
+# Model setup (online, run once)
+python setup.py                                # Download default models
+python setup.py --whisper-sizes medium large-v3 # Download specific sizes
+python setup.py --token YOUR_TOKEN             # Non-interactive token
 
-Process audio file with speaker diarization and transcription.
-
-positional arguments:
-  audio_file            Path to the audio file to process (optional with --update)
-
-options:
-  -h, --help            show this help message and exit
-  --model_size {tiny,small,medium,large-v3,turbo}
-                        Whisper model size (default: medium)
-  --update              Allow online updates for models (checks connectivity first)
-  --list                List available models and their cache status
-  --translate           Translate audio to English (default: transcribe in original language)
+# Audio processing (offline)
+python audio.py audio.wav                      # Process with default medium model
+python audio.py audio.wav --model_size tiny    # Use smaller model
+python audio.py audio.wav --translate          # Translate to English
+python audio.py --list                         # Show model cache status
 ```
 
 ### Model Management
 - **Cache Location**: `~/.cache/huggingface/hub/models--*`
-- **Check Status**: `python audio.py --list`
-- **Force Updates**: `python audio.py --update` (requires internet)
-- **Network Check**: Automatic connectivity detection before downloads
+- **Check Status**: `python audio.py --list` or `python setup.py --list`
+- **Download Models**: `python setup.py` (requires internet + HF token for diarization)
 
 ### Hardware Requirements
 - GPU: 16GB+ VRAM (RTX 3080 tested)
@@ -80,7 +70,7 @@ options:
 ## Development Conventions
 
 ### Error Handling Patterns
-- Network errors during `--update` → Graceful fallback to cached models
+- Missing models → Actionable message: "Run `python setup.py --whisper-sizes <size>`"
 - Missing audio files → Clear error messages with usage hints
 - GPU memory issues → Suggest smaller models (`--model_size tiny`)
 
@@ -110,9 +100,19 @@ options:
 - Model paths hardcoded to Hugging Face hub locations
 
 ## Key Files Reference
-- `audio.py`: Main script with CLI parsing, model loading, processing pipeline
+- `models.py`: Shared model constants, cache paths, `list_models()` utility
+- `setup.py`: Online model setup — downloads, HF token auth
+- `audio.py`: Offline audio processing — diarization + transcription
 - `requirements.txt`: Python dependencies (pip install)
 - `conda_packages.txt`: Conda environment with CUDA PyTorch
 - `sessions/`: Test audio files for development
-- `CLAUDE.md`: Additional AI assistant guidance (complements this file)</content>
+- `CLAUDE.md`: Additional AI assistant guidance (complements this file)
+
+## User interactions
+- **After making changes**: Run some unit tests to make sure we caught silly things like check
+ing imports, checking file structure
+- **Remind the user**: Remind the user how to see the changes that were just made. For example
+, restart the app.py or refresh the webpage with (ctrl + shift + R). 
+
+</content>
 <parameter name="filePath">/data/python/voice-journey/.github/copilot-instructions.md

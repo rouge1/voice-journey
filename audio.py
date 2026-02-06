@@ -1,197 +1,98 @@
+#!/usr/bin/env python3
+"""Offline audio processor for Voice Journey.
+
+Performs speaker diarization and speech transcription using cached models.
+Run setup.py first to download models.
+"""
+
 import warnings
-# Suppress warnings before imports
 warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*torch.load.*weights_only.*")
 
 import sys
 import os
-import argparse
-import socket
 
-# Check network connectivity when --update is used
-def check_network_connectivity():
-    """Quick check if we can reach the internet."""
-    try:
-        # Try to connect to Google DNS with short timeout
-        socket.create_connection(("8.8.8.8", 53), timeout=3)
-        return True
-    except OSError:
-        return False
-
-# Parse command-line arguments early to set offline mode before importing models
-parser = argparse.ArgumentParser(description='Process audio file with speaker diarization and transcription.')
-parser.add_argument('audio_file', nargs='?', help='Path to the audio file to process (optional with --update)')
-parser.add_argument('--model_size', default='medium', choices=['tiny', 'small', 'medium', 'large-v3', 'turbo'],
-                    help='Whisper model size (default: medium)')
-parser.add_argument('--update', action='store_true', 
-                    help='Allow online updates for models (checks connectivity first)')
-parser.add_argument('--list', action='store_true',
-                    help='List available models and their cache status')
-parser.add_argument('--translate', action='store_true',
-                    help='Translate audio to English (default: transcribe in original language)')
-
-args = parser.parse_args()
-
-# Check network connectivity if --update is requested
-if args.update and not check_network_connectivity():
-    print("\n" + "="*50)
-    print("No internet connection detected.")
-    print("Cannot check for model updates.")
-    if not args.audio_file:
-        print("Exiting - no audio file to process.")
-        sys.exit(0)
-    print("Using cached models only.")
-    print("Connect to internet and try again to check for updates.")
-    print("="*50)
-    # Force offline mode
-    os.environ["HF_HUB_OFFLINE"] = "1"
-
-# Handle --list (exit early)
-if args.list:
-    import os
-    cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
-    
-    print("Available models and cache status:")
-    print()
-    
-    # Check pyannote model
-    pyannote_path = os.path.join(cache_dir, "models--pyannote--speaker-diarization-3.1")
-    pyannote_status = "✅ Cached" if os.path.exists(pyannote_path) else "❌ Not cached"
-    print(f"Speaker Diarization: {pyannote_status}")
-    print("  pyannote/speaker-diarization-3.1")
-    print()
-
-    # Check Whisper models
-    print("Whisper Transcription Models:")
-    whisper_sizes = ['tiny', 'small', 'medium', 'large-v3', 'turbo']
-    size_info = {
-        'tiny': 'Fastest, least accurate (~39 MB)',
-        'small': 'Balanced speed/accuracy (~484 MB)',
-        'medium': 'Default, good quality (~1.5 GB)',
-        'large-v3': 'Best accuracy, high memory (~2.9 GB)',
-        'turbo': 'Fast & accurate, v3 optimized (~809 MB)'
-    }
-
-    for size in whisper_sizes:
-        model_path = os.path.join(cache_dir, f"models--Systran--faster-whisper-{size}")
-        status = "✅ Cached" if os.path.exists(model_path) else "❌ Not cached"
-        print(f"  {size:<8} - {size_info[size]:<35} {status}")
-
-    print()
+# Handle --list before argparse (audio_file is required for normal use)
+if "--list" in sys.argv:
+    from models import list_models
+    list_models()
     print("Usage: python audio.py <audio_file> [options]")
-    print("Options:")
-    print("  --model_size <size>      Whisper model size (tiny/small/medium/large-v3/turbo)")
-    print("  --update                 Download missing models")
+    print("Setup: python setup.py")
     sys.exit(0)
 
-# Set offline mode by default, unless --update is specified
-if not args.update:
-    os.environ["HF_HUB_OFFLINE"] = "1"  # Force offline mode to use cached models
+import argparse
 
+parser = argparse.ArgumentParser(
+    description="Process audio file with speaker diarization and transcription."
+)
+parser.add_argument("audio_file", help="Path to the audio file to process")
+parser.add_argument(
+    "--model_size",
+    default="medium",
+    choices=["tiny", "small", "medium", "large-v3", "turbo"],
+    help="Whisper model size (default: medium)",
+)
+parser.add_argument(
+    "--translate",
+    action="store_true",
+    help="Translate audio to English (default: transcribe in original language)",
+)
+args = parser.parse_args()
+
+# Don't force offline mode - let huggingface_hub use cache automatically
+
+# Pre-flight: check models are cached before heavy imports
+from models import is_diarization_cached, is_whisper_cached
+
+if not is_diarization_cached():
+    print("Error: Diarization model not found in cache.")
+    print("Run 'python setup.py' to download models first.")
+    sys.exit(1)
+
+if not is_whisper_cached(args.model_size):
+    print(f"Error: Whisper {args.model_size} model not found in cache.")
+    print(f"Run 'python setup.py --whisper-sizes {args.model_size}' to download it.")
+    sys.exit(1)
+
+if not os.path.exists(args.audio_file):
+    print(f"Error: Audio file '{args.audio_file}' not found!")
+    sys.exit(1)
+
+# Force offline mode now that we've verified models are cached
+os.environ["HF_HUB_OFFLINE"] = "1"
+
+# ==================== SETUP ====================
 import torch
 import torchaudio
 from pyannote.audio import Pipeline
 from faster_whisper import WhisperModel
 from datetime import timedelta
 
-# Set variables from parsed args
-audio_file = args.audio_file
-model_size = args.model_size
-
-# Handle update-only mode
-if args.update and not audio_file:
-    print("Checking for model updates...")
-elif not audio_file:
-    print("Error: Audio file required. Usage: python audio.py <audio_file> [--model_size SIZE] [--update]")
-    sys.exit(1)
-elif not os.path.exists(audio_file):
-    print(f"Error: Audio file '{audio_file}' not found!")
-    sys.exit(1)
-
-# ==================== SETUP ====================
 print("Torch version:", torch.__version__)
 print("CUDA available:", torch.cuda.is_available())
 if torch.cuda.is_available():
     print("GPU name:", torch.cuda.get_device_name(0))
 
-# Load diarization pipeline (from cache or prompt for token)
+# Load diarization pipeline
 print("\nLoading pyannote speaker diarization pipeline...")
-try:
-    diarizer = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
-except Exception as e:
-    if "401" in str(e) or "403" in str(e) or "gated" in str(e).lower():
-        print("\n" + "="*60)
-        print("Model not cached. Hugging Face token required for first download.")
-        print("Get your token at: https://hf.co/settings/tokens")
-        print("Make sure you've accepted the model terms at:")
-        print("  https://hf.co/pyannote/speaker-diarization-3.1")
-        print("="*60)
-        hf_token = input("\nEnter your Hugging Face token: ").strip()
-        if not hf_token:
-            print("Error: Token is required for first-time download.")
-            sys.exit(1)
-        print("Downloading model (this only needs to happen once)...")
-        diarizer = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=hf_token)
-        print("Model cached successfully! Token won't be needed again.")
-    elif args.update and ("Temporary failure in name resolution" in str(e) or 
-                          "Max retries exceeded" in str(e) or 
-                          "Connection refused" in str(e) or
-                          "Name resolution failure" in str(e) or
-                          "MaxRetryError" in str(type(e))):
-        print("\n" + "="*50)
-        print("Network connection error while checking for updates.")
-        print("This is expected if you're offline.")
-        print("Using cached models - no updates downloaded.")
-        print("Run with internet connection to check for updates.")
-        print("="*50)
-        # Try to load from cache
-        try:
-            diarizer = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
-        except Exception as cache_e:
-            print(f"Error loading cached model: {cache_e}")
-            sys.exit(1)
-    else:
-        raise e
+diarizer = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
 diarizer.to(torch.device("cuda"))
 
 # Load Whisper transcription model
-# Options: "large-v3" (best accuracy, high VRAM), "medium", "small", "tiny" (fastest, least accurate)
-device = "cpu"  # Use CPU for transcription to avoid cuDNN issues
-compute_type = "int8"  # Use int8 for CPU
-print(f"Loading Whisper {model_size} transcription model on {device}...")
-try:
-    transcriber = WhisperModel(model_size, device=device, compute_type=compute_type)
-except Exception as e:
-    if args.update and ("Temporary failure in name resolution" in str(e) or 
-                        "Max retries exceeded" in str(e) or 
-                        "Connection refused" in str(e) or
-                        "Name resolution failure" in str(e) or
-                        "MaxRetryError" in str(type(e))):
-        print("\n" + "="*50)
-        print("Network connection error while checking for Whisper updates.")
-        print("This is expected if you're offline.")
-        print("Using cached model - no updates downloaded.")
-        print("Run with internet connection to check for updates.")
-        print("="*50)
-        # Try to load from cache - WhisperModel should handle this automatically
-        transcriber = WhisperModel(model_size, device=device, compute_type=compute_type)
-    else:
-        raise e
-
-# If update-only mode, exit after loading models
-if args.update and not audio_file:
-    print("Model update check complete! All models are loaded and ready.")
-    sys.exit(0)
+device = "cpu"
+compute_type = "int8"
+print(f"Loading Whisper {args.model_size} transcription model on {device}...")
+transcriber = WhisperModel(args.model_size, device=device, compute_type=compute_type)
 
 # ==================== PROCESS AUDIO ====================
 
-print(f"\nLoading audio: {audio_file}")
+print(f"\nLoading audio: {args.audio_file}")
 
 print("Running diarization...")
-# Pass file path directly - pyannote handles loading internally
-diarization = diarizer(audio_file)
+diarization = diarizer(args.audio_file)
 
 # Get audio duration from diarization results
-timeline_extent = diarization.speaker_diarization.get_timeline().extent()
+timeline_extent = diarization.get_timeline().extent()
 duration_seconds = timeline_extent.duration
 duration = str(timedelta(seconds=int(duration_seconds)))
 print(f"Audio duration: {duration} ({duration_seconds:.2f} seconds)")
@@ -199,21 +100,21 @@ print(f"Audio duration: {duration} ({duration_seconds:.2f} seconds)")
 # Clear GPU memory after diarization
 torch.cuda.empty_cache()
 
-# Note: Keeping diarizer in memory as its result is used later for speaker analysis
-
 # Build speaker map for timeline and alignment
 speaker_map = {}
-for turn, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True):
-    for t in range(int(turn.start * 10), int(turn.end * 10)):  # 100ms steps
+for turn, _, speaker in diarization.itertracks(yield_label=True):
+    for t in range(int(turn.start * 10), int(turn.end * 10)):
         speaker_map[round(t / 10, 2)] = speaker
 
 # Create timeline visualization
 print("\nGenerating timeline visualization...")
 timeline = []
 for t in range(0, int(duration_seconds)):
-    has_speaker = any(speaker_map.get(round(sub_t / 10, 2), None) 
-                     for sub_t in range(t*10, (t+1)*10) 
-                     if speaker_map.get(round(sub_t / 10, 2), None) not in [None, "UNKNOWN"])
+    has_speaker = any(
+        speaker_map.get(round(sub_t / 10, 2), None)
+        for sub_t in range(t * 10, (t + 1) * 10)
+        if speaker_map.get(round(sub_t / 10, 2), None) not in [None, "UNKNOWN"]
+    )
     timeline.append("x" if has_speaker else "_")
 timeline_str = "".join(timeline)
 print(f"Timeline (1 char = 1 sec): {timeline_str}")
@@ -221,23 +122,24 @@ print(f"Timeline (1 char = 1 sec): {timeline_str}")
 print("Running transcription...")
 try:
     task = "translate" if args.translate else "transcribe"
-    segments, info = transcriber.transcribe(audio_file, beam_size=1, vad_filter=True, task=task)
+    segments, info = transcriber.transcribe(
+        args.audio_file, beam_size=1, vad_filter=True, task=task
+    )
 except RuntimeError as e:
     if "out of memory" in str(e).lower():
-        print("GPU out of memory! Try using a smaller model (change model_size to 'small' or 'tiny') or set device='cpu'")
-        raise e
-    else:
-        raise e
+        print(
+            "GPU out of memory! Try a smaller model (--model_size tiny or small) or set device='cpu'"
+        )
+    raise
 
-# Clear GPU memory after transcription (Whisper uses CPU, but good practice)
+# Clear GPU memory after transcription
 torch.cuda.empty_cache()
 
 # ==================== ALIGN & PRINT ====================
-# Speaker map already built above
 
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("SPEAKER-LABELED TRANSCRIPT")
-print("="*60)
+print("=" * 60)
 
 current_speaker = None
 for seg in segments:
@@ -248,7 +150,11 @@ for seg in segments:
     # Find dominant speaker in this segment
     times = range(int(start * 10), int(end * 10))
     speakers_in_seg = [speaker_map.get(round(t / 10, 2), "UNKNOWN") for t in times]
-    seg_speaker = max(set(speakers_in_seg), key=speakers_in_seg.count) if speakers_in_seg else "UNKNOWN"
+    seg_speaker = (
+        max(set(speakers_in_seg), key=speakers_in_seg.count)
+        if speakers_in_seg
+        else "UNKNOWN"
+    )
 
     if seg_speaker != current_speaker:
         timestamp = str(timedelta(seconds=int(start)))
@@ -264,7 +170,7 @@ if args.translate:
 else:
     print(f"\nTranscription language: {info.language}")
 
-# Clean up models
+# Clean up
 del diarizer
 del transcriber
 torch.cuda.empty_cache()

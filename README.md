@@ -8,9 +8,9 @@ A project for speaker diarization using PyTorch and the pyannote.audio library. 
 - Speech transcription using OpenAI Whisper (via faster-whisper)
 - GPU acceleration support with CUDA
 - Offline-first operation with cached models
-- Intelligent network connectivity checking
+- Separate setup/processing workflow (online setup, offline processing)
+- Pre-flight cache validation with actionable error messages
 - Flexible command-line interface with multiple options
-- Automatic error handling and user-friendly messages
 
 ## Hardware Requirements
 
@@ -57,50 +57,69 @@ The pyannote models are gated and require accepting the license terms:
    - [pyannote/speaker-diarization-3.1](https://hf.co/pyannote/speaker-diarization-3.1)
    - [pyannote/segmentation-3.0](https://hf.co/pyannote/segmentation-3.0)
 
-**Note**: On first run, the script will prompt you for your token to download the models. Once downloaded, models are cached locally and the token is never needed again.
+### 4. Download Models
 
-### 4. Verify Installation
+```bash
+# Download default models (diarization + medium whisper)
+python setup.py
+
+# Or download specific whisper sizes
+python setup.py --whisper-sizes medium large-v3
+
+# Or download all whisper sizes
+python setup.py --whisper-sizes all
+
+# Pass token non-interactively
+python setup.py --token YOUR_TOKEN
+```
+
+On first run, `setup.py` will prompt for your Hugging Face token. Once models are downloaded, the token is never needed again.
+
+### 5. Verify Installation
 
 ```bash
 python audio.py --list
 ```
 
-This will show all available models and their cache status. You should see output confirming PyTorch version, CUDA availability, and model cache status.
+This will show all available models and their cache status.
 
 ## Usage
 
 ### Command Line Options
 
 ```bash
-python audio.py [OPTIONS] [AUDIO_FILE]
+# Model setup (online, run once)
+python setup.py [OPTIONS]
 
 Options:
-  AUDIO_FILE              Path to audio file to process (optional with --update)
+  --list                  Show model cache status and exit
+  --token TOKEN           Hugging Face token (or set HF_TOKEN env var)
+  --whisper-sizes SIZE    Whisper sizes to download (default: medium, use "all" for all)
+
+# Audio processing (offline)
+python audio.py AUDIO_FILE [OPTIONS]
+
+Options:
+  AUDIO_FILE              Path to audio file to process (required)
   --model_size SIZE       Whisper model size: tiny, small, medium, large-v3, turbo (default: medium)
   --translate             Translate audio to English (auto-detects source language)
-  --update                Check for online model updates (requires internet)
   --list                  Show available models and cache status
   -h, --help             Show help message
 
 Examples:
-  # Basic usage (offline mode)
+  # First-time setup
+  python setup.py
+  python setup.py --whisper-sizes medium large-v3
+
+  # Basic usage (offline)
   python audio.py audio.wav
-  
+
   # Specify model size
   python audio.py audio.wav --model_size large-v3
   python audio.py audio.wav --model_size turbo
-  
-  # Check for updates and process
-  python audio.py audio.wav --update
-  
-  # Update models only (no audio processing)
-  python audio.py --update
-  
+
   # List models and cache status
   python audio.py --list
-  
-  # Combine options
-  python audio.py audio.wav --model_size small --update
 
   # Translate Spanish/French/etc. audio to English
   python audio.py spanish_audio.wav --translate
@@ -118,13 +137,13 @@ Examples:
 
 ### Offline vs Online Operation
 
-- **Default (Offline)**: Uses cached models, no internet required
-- **With `--update`**: Checks for model updates, requires internet connection
-- **Network Check**: Automatically detects connectivity before attempting updates
+- **`setup.py` (Online)**: Downloads models, handles HF authentication
+- **`audio.py` (Offline)**: Processes audio using cached models, no internet required
+- Pre-flight checks verify models are cached before loading heavy libraries
 
 ### Cache Status
 
-Use `python audio.py --list` to see which models are cached locally:
+Use `python audio.py --list` or `python setup.py --list` to see which models are cached locally:
 
 ```
 Available models and cache status:
@@ -140,87 +159,37 @@ Whisper Transcription Models:
   turbo    - Fast & accurate, v3 optimized (~809 MB) ✅ Cached
 ```
 
-### First Run (Token Required)
+### First Run (Setup Required)
 
-On first run with uncached models, you'll see:
+Run `setup.py` before first use:
 
 ```
-Loading pyannote speaker diarization pipeline...
+$ python setup.py
+Voice Journey - Model Setup
+========================================
 
-============================================================
-Model not cached. Hugging Face token required for first download.
-Get your token at: https://hf.co/settings/tokens
-Make sure you've accepted the model terms at:
-  https://hf.co/pyannote/speaker-diarization-3.1
-============================================================
+Checking internet connectivity...
+Connected.
 
+Downloading diarization model: pyannote/speaker-diarization-3.1
 Enter your Hugging Face token: <paste token here>
-Downloading model (this only needs to happen once)...
-Model cached successfully! Token won't be needed again.
+Diarization model cached successfully!
+Downloading Whisper medium model...
+Whisper medium cached successfully!
+
+Setup complete! Process audio with:
+  python audio.py <audio_file>
 ```
 
-### Subsequent Runs (No Token Needed)
+### Subsequent Runs (No Setup Needed)
 
-Models load directly from cache at `~/.cache/huggingface/hub/`. The script runs completely offline by default.
+Models load directly from cache at `~/.cache/huggingface/hub/`. `audio.py` runs completely offline.
 
-### Offline Operation
-
-The script is designed to work offline once models are cached:
-
-- No internet required for normal operation
-- Cached models persist between runs
-- Use `--update` only when you want to check for newer model versions
-- Network connectivity is automatically detected
-
-### Error Handling
-
-The script gracefully handles various scenarios:
-
-- **No internet with `--update`**: Shows friendly message and uses cached models
-- **Invalid token**: Prompts for re-entry
-- **Missing audio file**: Clear error messages
-- **Model loading failures**: Fallback to cached versions when possible
-
-### Python API Example
-
-For programmatic use, you can use the underlying libraries directly:
-
-```python
-import torch
-from pyannote.audio import Pipeline
-from faster_whisper import WhisperModel
-
-# Load diarization pipeline (handles token prompting automatically)
-diarizer = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
-diarizer.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-
-# Load Whisper model
-whisper_model = WhisperModel("medium", device="cuda", compute_type="int8")
-
-# Process audio
-diarization = diarizer("audio.wav")
-segments, info = whisper_model.transcribe("audio.wav", vad_filter=True)
-
-# Combine results
-for segment in segments:
-    # Find which speaker was active during this segment
-    speakers = diarization.speaker_diarization.crop(segment.start, segment.end)
-    active_speaker = max(speakers.labels(), key=lambda s: speakers.label_duration(s))
-    
-    print(f"[{segment.start:.1f}s] SPEAKER_{active_speaker}: {segment.text}")
+If a required model is missing, `audio.py` will tell you exactly which `setup.py` command to run:
 ```
-
-### Main Script Features
-
-The `audio.py` script provides a complete command-line solution for speaker diarization and transcription:
-
-- **Speaker Diarization**: Identifies who spoke when using pyannote.audio
-- **Speech Transcription**: Converts speech to text using OpenAI Whisper
-- **Flexible Model Selection**: Choose from 4 Whisper model sizes
-- **Offline Operation**: Works without internet once models are cached
-- **Smart Updates**: Checks connectivity before attempting downloads
-- **Error Handling**: Graceful handling of network issues and missing files
-- **GPU Acceleration**: Automatic CUDA detection and utilization
+Error: Whisper large-v3 model not found in cache.
+Run 'python setup.py --whisper-sizes large-v3' to download it.
+```
 
 ### Output Format
 
@@ -243,64 +212,52 @@ SPEAKER-LABELED TRANSCRIPT
 
 ```
 voice-journey/
-├── README.md              # Comprehensive documentation
-├── CLAUDE.md              # AI assistant guidance
-├── audio.py               # Main diarization/transcription script
+├── models.py              # Shared model constants, cache paths, list_models()
+├── setup.py               # Online: download models, HF token setup
+├── audio.py               # Offline: speaker diarization + transcription
 ├── requirements.txt       # Python pip dependencies
 ├── conda_packages.txt     # Conda environment packages
+├── CLAUDE.md              # AI assistant guidance
+├── README.md              # Project documentation
 ├── sessions/              # Sample audio files for testing
-└── __pycache__/           # Python bytecode cache (auto-generated)
+└── .github/
+    └── copilot-instructions.md  # GitHub Copilot guidance
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"No internet connection detected"**: 
-   - Expected when offline - script will use cached models
-   - Connect to internet and use `--update` to check for updates
+1. **"Diarization model not found in cache"**:
+   - Run `python setup.py` to download models first
+   - Requires internet and a Hugging Face token
 
-2. **TorchCodec Warning**: 
-   - Harmless warning, doesn't affect functionality
-   - Can be ignored
+2. **"Whisper X model not found in cache"**:
+   - Run `python setup.py --whisper-sizes <size>` to download the specific model
 
-3. **TensorFloat-32 (TF32) Warning**: 
-   - Suppressed in code for better performance
-   - TF32 provides faster computation with minimal precision loss
+3. **Hugging Face Access Denied (401/403)**:
+   - Verify you've accepted model licenses at hf.co/pyannote/speaker-diarization-3.1
+   - Check token validity at hf.co/settings/tokens
 
-4. **CUDA Not Available**: 
+4. **CUDA Not Available**:
    - Ensure GPU drivers are up to date
    - Check CUDA installation: `nvidia-smi`
 
-5. **Hugging Face Access Denied**: 
-   - Verify you've accepted model terms on Hugging Face
-   - Check token validity
-   - Models are cached after first download
-
-6. **Memory Issues**: 
+5. **Memory Issues**:
    - Speaker diarization is memory-intensive
    - Try smaller Whisper models: `--model_size tiny`
    - Ensure sufficient RAM (62GB+) and VRAM (16GB+)
 
-7. **Model Cache Issues**:
+6. **Model Cache Issues**:
    - Check cache status: `python audio.py --list`
    - Clear cache if needed: `rm -rf ~/.cache/huggingface/hub/models--*`
-   - Re-run to re-download models
-
-### Performance Tips
-
-- **GPU Usage**: Ensure CUDA is available for significant speedups
-- **Model Selection**: Use smaller models for faster processing
-- **Batch Processing**: Process shorter audio segments for better memory management
-- **Offline Operation**: Work offline once models are cached
-- **Regular Updates**: Use `--update` periodically to get model improvements
+   - Re-run `python setup.py` to re-download
 
 ### Network Requirements
 
-- **First Run**: Internet required for model downloads
-- **Normal Operation**: Completely offline capable
-- **Updates**: Internet required only when using `--update`
-- **Automatic Detection**: Script checks connectivity before attempting downloads
+- **Setup**: Internet required only for `python setup.py` (model downloads)
+- **Processing**: `python audio.py` runs completely offline
+- Models are cached at `~/.cache/huggingface/hub/`
 
 ## Contributing
 
