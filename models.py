@@ -22,8 +22,17 @@ def _get_whisper_model_name(size):
     return size
 
 
+PYANNOTE_CACHE_DIR = os.path.expanduser("~/.cache/torch/pyannote")
+
+
 def _diarization_cache_path():
-    return os.path.join(CACHE_DIR, "models--pyannote--speaker-diarization-3.1")
+    """Check both pyannote's native cache and HuggingFace hub cache."""
+    pyannote_path = os.path.join(PYANNOTE_CACHE_DIR, "models--pyannote--speaker-diarization-3.1")
+    hf_path = os.path.join(CACHE_DIR, "models--pyannote--speaker-diarization-3.1")
+    # Prefer pyannote native cache (where Pipeline.from_pretrained stores it)
+    if os.path.exists(pyannote_path):
+        return pyannote_path
+    return hf_path
 
 
 def _whisper_cache_path(size):

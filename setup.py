@@ -64,7 +64,7 @@ def download_diarization(token):
     try:
         from pyannote.audio import Pipeline
 
-        Pipeline.from_pretrained(DIARIZATION_MODEL, token=token)
+        Pipeline.from_pretrained(DIARIZATION_MODEL, use_auth_token=token)
         print("Diarization model cached successfully!")
         return True
     except Exception as e:
