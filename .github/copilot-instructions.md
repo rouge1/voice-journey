@@ -47,12 +47,12 @@ pip install -r requirements.txt          # Remaining deps
 ```bash
 # Model setup (online, run once)
 python setup.py                                # Download default models
-python setup.py --whisper-sizes medium large-v3 # Download specific sizes
+python setup.py --update medium large # Download specific sizes
 python setup.py --token YOUR_TOKEN             # Non-interactive token
 
 # Audio processing (offline)
 python audio.py audio.wav                      # Process with default medium model
-python audio.py audio.wav --model_size tiny    # Use smaller model
+python audio.py audio.wav --model tiny    # Use smaller model
 python audio.py audio.wav --translate          # Translate to English
 python audio.py --list                         # Show model cache status
 ```
@@ -72,20 +72,20 @@ python audio.py --list                         # Show model cache status
 ### Error Handling Patterns
 - Missing models → Actionable message: "Run `python setup.py --whisper-sizes <size>`"
 - Missing audio files → Clear error messages with usage hints
-- GPU memory issues → Suggest smaller models (`--model_size tiny`)
+- GPU memory issues → Suggest smaller models (`--model tiny`)
 
 ### Model Selection Trade-offs
 | Model | Size | Use Case | Example Command |
 |-------|------|----------|-----------------|
-| tiny | 39MB | Testing/fast | `python audio.py file.wav --model_size tiny` |
-| small | 484MB | Balanced | `python audio.py file.wav --model_size small` |
+| tiny | 39MB | Testing/fast | `python audio.py file.wav --model tiny` |
+| small | 484MB | Balanced | `python audio.py file.wav --model small` |
 | medium | 1.5GB | Default | `python audio.py file.wav` |
-| large-v3 | 2.9GB | Max accuracy | `python audio.py file.wav --model_size large-v3` |
-| turbo | 809MB | Fast v3 | `python audio.py file.wav --model_size turbo` |
+| large | 2.9GB | Max accuracy | `python audio.py file.wav --model large` |
+| turbo | 809MB | Fast v3 | `python audio.py file.wav --model turbo` |
 
 ### Testing
 - Sample audio files in `sessions/` directory
-- Test with: `python audio.py sessions/test_clip.wav --model_size tiny`
+- Test with: `python audio.py sessions/test_clip.wav --model tiny`
 
 ## Integration Points
 

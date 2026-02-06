@@ -16,6 +16,9 @@ from models import (
     is_diarization_cached,
     is_whisper_cached,
     list_models,
+    remove_diarization_cache,
+    remove_whisper_cache,
+    _get_whisper_model_name,
 )
 
 
@@ -85,7 +88,8 @@ def download_whisper(size):
     try:
         from faster_whisper import WhisperModel
 
-        WhisperModel(size, device="cpu", compute_type="int8")
+        actual_model = _get_whisper_model_name(size)
+        WhisperModel(actual_model, device="cpu", compute_type="int8")
         print(f"Whisper {size} cached successfully!")
         return True
     except Exception as e:
@@ -100,31 +104,87 @@ def main():
     parser.add_argument(
         "--list", action="store_true", help="Show model cache status and exit"
     )
-    parser.add_argument("--token", help="Hugging Face token (or set HF_TOKEN env var)")
     parser.add_argument(
-        "--whisper-sizes",
+        "--remove",
         nargs="+",
-        default=["medium"],
-        metavar="SIZE",
-        help='Whisper sizes to download (default: medium, use "all" for all sizes)',
+        metavar="MODEL",
+        help='Remove cached models (use "diarization" or whisper sizes like "medium", or "all")',
     )
+    parser.add_argument(
+        "--update",
+        nargs="+",
+        metavar="MODEL",
+        help='Download/update models (diarization, whisper sizes like "medium", or "all". Downloads if missing, updates if SHA mismatch detected)',
+    )
+    parser.add_argument("--token", help="Hugging Face token (or set HF_TOKEN env var)")
     args = parser.parse_args()
+
+    # If no action specified, show list and exit
+    if not args.list and not args.remove and not args.update:
+        list_models()
+        print("\nUsage:")
+        print("  python setup.py --list              # Show model status")
+        print("  python setup.py --update medium     # Download/update models")
+        print("  python setup.py --remove medium     # Remove cached models")
+        sys.exit(0)
 
     if args.list:
         list_models()
         sys.exit(0)
 
-    # Resolve whisper sizes
-    if "all" in args.whisper_sizes:
-        whisper_sizes = WHISPER_SIZES
-    else:
-        for s in args.whisper_sizes:
-            if s not in WHISPER_SIZES:
-                print(f"Error: Unknown whisper size '{s}'. Choose from: {', '.join(WHISPER_SIZES)}")
-                sys.exit(1)
-        whisper_sizes = args.whisper_sizes
+    if args.remove:
+        print("Voice Journey - Remove Models")
+        print("=" * 40)
+        print()
+        list_models()
+        
+        removed_any = False
+        for model in args.remove:
+            if model == "diarization":
+                if remove_diarization_cache():
+                    print(f"✅ Removed diarization model")
+                    removed_any = True
+                else:
+                    print(f"❌ Diarization model not found")
+            elif model == "all":
+                # Remove all models
+                if remove_diarization_cache():
+                    print(f"✅ Removed diarization model")
+                    removed_any = True
+                for size in WHISPER_SIZES:
+                    if remove_whisper_cache(size):
+                        print(f"✅ Removed Whisper {size} model")
+                        removed_any = True
+            elif model in WHISPER_SIZES:
+                if remove_whisper_cache(model):
+                    print(f"✅ Removed Whisper {model} model")
+                    removed_any = True
+                else:
+                    print(f"❌ Whisper {model} model not found")
+            else:
+                print(f"❌ Unknown model '{model}'. Use 'diarization', whisper sizes, or 'all'")
+        
+        if removed_any:
+            print("\nModels removed successfully!")
+        else:
+            print("\nNo models were removed.")
+        sys.exit(0)
 
-    print("Voice Journey - Model Setup")
+    # Resolve models to update/download
+    models_to_process = []
+    if "all" in args.update:
+        models_to_process = ["diarization"] + WHISPER_SIZES
+    else:
+        for model in args.update:
+            if model == "diarization":
+                models_to_process.append("diarization")
+            elif model in WHISPER_SIZES:
+                models_to_process.append(model)
+            else:
+                print(f"Error: Unknown model '{model}'. Choose from: diarization, {', '.join(WHISPER_SIZES)}, or 'all'")
+                sys.exit(1)
+
+    print("Voice Journey - Model Setup/Update")
     print("=" * 40)
     print()
     list_models()
@@ -136,17 +196,49 @@ def main():
         sys.exit(1)
     print("Connected.\n")
 
-    # Determine what needs downloading
-    need_diarization = not is_diarization_cached()
-    need_whisper = [s for s in whisper_sizes if not is_whisper_cached(s)]
+    # Check which models actually need updates (SHA mismatch)
+    from models import check_model_updates, get_local_sha, _diarization_cache_path, _whisper_cache_path
+    
+    print("Checking for updates...")
+    updates_info = check_model_updates()
+    
+    need_diarization = "diarization" in models_to_process and not is_diarization_cached()
+    need_whisper = [m for m in models_to_process if m in WHISPER_SIZES and not is_whisper_cached(m)]
+    
+    # Only update if SHA mismatch detected
+    update_diarization = False
+    update_whisper = []
+    
+    if "diarization" in models_to_process and is_diarization_cached():
+        if updates_info and 'diarization' in updates_info and updates_info['diarization'].get('has_update'):
+            update_diarization = True
+            print("⚠️  Diarization model has updates available")
+        else:
+            print("✅ Diarization model is already up to date")
+    
+    for size in [m for m in models_to_process if m in WHISPER_SIZES and is_whisper_cached(m)]:
+        if updates_info and f'whisper_{size}' in updates_info and updates_info[f'whisper_{size}'].get('has_update'):
+            update_whisper.append(size)
+            print(f"⚠️  Whisper {size} model has updates available")
+        else:
+            print(f"✅ Whisper {size} model is already up to date")
 
-    if not need_diarization and not need_whisper:
-        print(f"Requested models (whisper: {', '.join(whisper_sizes)}) are already set up.")
+    if not need_diarization and not need_whisper and not update_diarization and not update_whisper:
+        print(f"\nAll requested models are already up to date.")
         sys.exit(0)
+
+    # Handle updates (remove old versions first)
+    if update_diarization:
+        print("\nUpdating diarization model...")
+        remove_diarization_cache()
+        
+    for size in update_whisper:
+        print(f"\nUpdating Whisper {size} model...")
+        remove_whisper_cache(size)
 
     # Download diarization
     diarization_ok = True
-    if need_diarization:
+    if need_diarization or update_diarization:
         token = get_hf_token(args.token)
         diarization_ok = download_diarization(token)
     else:
@@ -154,18 +246,22 @@ def main():
 
     # Download whisper models
     whisper_results = {}
-    for size in whisper_sizes:
+    whisper_sizes_to_download = need_whisper + update_whisper
+    for size in set(whisper_sizes_to_download):  # Remove duplicates
         whisper_results[size] = download_whisper(size)
 
     # Summary
     print("\n" + "=" * 40)
     print("Setup Summary")
     print("=" * 40)
-    d_status = "✅" if is_diarization_cached() else "❌"
-    print(f"  Diarization: {d_status}")
-    for size in whisper_sizes:
-        w_status = "✅" if is_whisper_cached(size) else "❌"
-        print(f"  Whisper {size}: {w_status}")
+    if "diarization" in models_to_process:
+        d_status = "✅" if is_diarization_cached() else "❌"
+        print(f"  Diarization: {d_status}")
+    
+    for size in WHISPER_SIZES:
+        if size in models_to_process:
+            w_status = "✅" if is_whisper_cached(size) else "❌"
+            print(f"  Whisper {size}: {w_status}")
 
     if diarization_ok and all(whisper_results.values()):
         print("\nSetup complete! Process audio with:")

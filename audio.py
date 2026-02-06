@@ -27,9 +27,9 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("audio_file", help="Path to the audio file to process")
 parser.add_argument(
-    "--model_size",
+    "--model",
     default="medium",
-    choices=["tiny", "small", "medium", "large-v3", "turbo"],
+    choices=["tiny", "small", "medium", "large", "turbo"],
     help="Whisper model size (default: medium)",
 )
 parser.add_argument(
@@ -42,16 +42,16 @@ args = parser.parse_args()
 # Don't force offline mode - let huggingface_hub use cache automatically
 
 # Pre-flight: check models are cached before heavy imports
-from models import is_diarization_cached, is_whisper_cached
+from models import is_diarization_cached, is_whisper_cached, _get_whisper_model_name
 
 if not is_diarization_cached():
     print("Error: Diarization model not found in cache.")
     print("Run 'python setup.py' to download models first.")
     sys.exit(1)
 
-if not is_whisper_cached(args.model_size):
-    print(f"Error: Whisper {args.model_size} model not found in cache.")
-    print(f"Run 'python setup.py --whisper-sizes {args.model_size}' to download it.")
+if not is_whisper_cached(args.model):
+    print(f"Error: Whisper {args.model} model not found in cache.")
+    print(f"Run 'python setup.py --whisper-sizes {args.model}' to download it.")
     sys.exit(1)
 
 if not os.path.exists(args.audio_file):
@@ -81,8 +81,9 @@ diarizer.to(torch.device("cuda"))
 # Load Whisper transcription model
 device = "cpu"
 compute_type = "int8"
-print(f"Loading Whisper {args.model_size} transcription model on {device}...")
-transcriber = WhisperModel(args.model_size, device=device, compute_type=compute_type)
+actual_model = _get_whisper_model_name(args.model)
+print(f"Loading Whisper {args.model} transcription model on {device}...")
+transcriber = WhisperModel(actual_model, device=device, compute_type=compute_type)
 
 # ==================== PROCESS AUDIO ====================
 
@@ -92,7 +93,7 @@ print("Running diarization...")
 diarization = diarizer(args.audio_file)
 
 # Get audio duration from diarization results
-timeline_extent = diarization.get_timeline().extent()
+timeline_extent = diarization.speaker_diarization.get_timeline().extent()
 duration_seconds = timeline_extent.duration
 duration = str(timedelta(seconds=int(duration_seconds)))
 print(f"Audio duration: {duration} ({duration_seconds:.2f} seconds)")
@@ -102,7 +103,7 @@ torch.cuda.empty_cache()
 
 # Build speaker map for timeline and alignment
 speaker_map = {}
-for turn, _, speaker in diarization.itertracks(yield_label=True):
+for turn, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True):
     for t in range(int(turn.start * 10), int(turn.end * 10)):
         speaker_map[round(t / 10, 2)] = speaker
 
@@ -128,7 +129,7 @@ try:
 except RuntimeError as e:
     if "out of memory" in str(e).lower():
         print(
-            "GPU out of memory! Try a smaller model (--model_size tiny or small) or set device='cpu'"
+            "GPU out of memory! Try a smaller model (--model tiny or small) or set device='cpu'"
         )
     raise
 

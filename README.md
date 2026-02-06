@@ -64,10 +64,10 @@ The pyannote models are gated and require accepting the license terms:
 python setup.py
 
 # Or download specific whisper sizes
-python setup.py --whisper-sizes medium large-v3
+python setup.py --update medium large
 
 # Or download all whisper sizes
-python setup.py --whisper-sizes all
+python setup.py --update all
 
 # Pass token non-interactively
 python setup.py --token YOUR_TOKEN
@@ -101,7 +101,7 @@ python audio.py AUDIO_FILE [OPTIONS]
 
 Options:
   AUDIO_FILE              Path to audio file to process (required)
-  --model_size SIZE       Whisper model size: tiny, small, medium, large-v3, turbo (default: medium)
+  --model SIZE           Whisper model size: tiny, small, medium, large, turbo (default: medium)
   --translate             Translate audio to English (auto-detects source language)
   --list                  Show available models and cache status
   -h, --help             Show help message
@@ -109,14 +109,14 @@ Options:
 Examples:
   # First-time setup
   python setup.py
-  python setup.py --whisper-sizes medium large-v3
+  python setup.py --update medium large
 
   # Basic usage (offline)
   python audio.py audio.wav
 
   # Specify model size
-  python audio.py audio.wav --model_size large-v3
-  python audio.py audio.wav --model_size turbo
+  python audio.py audio.wav --model large
+  python audio.py audio.wav --model turbo
 
   # List models and cache status
   python audio.py --list
@@ -132,7 +132,7 @@ Examples:
 | `tiny` | ~39 MB | Fastest | Lowest | Testing, quick results |
 | `small` | ~484 MB | Fast | Good | Balance of speed/quality |
 | `medium` | ~1.5 GB | Medium | Better | Default, good quality |
-| `large-v3` | ~2.9 GB | Slowest | Best | Maximum accuracy |
+| `large` | ~2.9 GB | Slowest | Best | Maximum accuracy |
 | `turbo` | ~809 MB | Fast | High | Optimized v3 performance |
 
 ### Offline vs Online Operation
@@ -155,7 +155,7 @@ Whisper Transcription Models:
   tiny     - Fastest, least accurate (~39 MB)    ✅ Cached
   small    - Balanced speed/accuracy (~484 MB)   ✅ Cached
   medium   - Default, good quality (~1.5 GB)     ✅ Cached
-  large-v3 - Best accuracy, high memory (~2.9 GB) ✅ Cached
+  large   - Best accuracy, high memory (~2.9 GB) ✅ Cached
   turbo    - Fast & accurate, v3 optimized (~809 MB) ✅ Cached
 ```
 
@@ -187,8 +187,8 @@ Models load directly from cache at `~/.cache/huggingface/hub/`. `audio.py` runs 
 
 If a required model is missing, `audio.py` will tell you exactly which `setup.py` command to run:
 ```
-Error: Whisper large-v3 model not found in cache.
-Run 'python setup.py --whisper-sizes large-v3' to download it.
+Error: Whisper large model not found in cache.
+Run 'python setup.py --update large' to download it.
 ```
 
 ### Output Format
@@ -245,7 +245,7 @@ voice-journey/
 
 5. **Memory Issues**:
    - Speaker diarization is memory-intensive
-   - Try smaller Whisper models: `--model_size tiny`
+   - Try smaller Whisper models: `--model tiny`
    - Ensure sufficient RAM (62GB+) and VRAM (16GB+)
 
 6. **Model Cache Issues**:
