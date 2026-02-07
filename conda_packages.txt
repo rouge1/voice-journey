@@ -2,7 +2,7 @@
 # Install with: conda install --file conda_packages.txt
 #
 # This creates the complete environment with CUDA support
-# Date: January 5, 2026
+# Date: February 7, 2026
 
 # PyTorch with CUDA support
 pytorch>=2.7.1

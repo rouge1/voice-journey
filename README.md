@@ -24,7 +24,7 @@ A project for speaker diarization using PyTorch and the pyannote.audio library. 
 
 - Python 3.12
 - Conda/Mamba for environment management
-- CUDA 12.9+ compatible drivers
+- CUDA 12.4+ compatible drivers
 - Hugging Face account with access to pyannote models
 
 ## Installation
@@ -94,7 +94,8 @@ python setup.py [OPTIONS]
 Options:
   --list                  Show model cache status and exit
   --token TOKEN           Hugging Face token (or set HF_TOKEN env var)
-  --whisper-sizes SIZE    Whisper sizes to download (default: medium, use "all" for all)
+  --update MODEL [MODEL...] Download/update models (diarization, whisper sizes, or "all")
+  --remove MODEL [MODEL...] Remove cached models
 
 # Audio processing (offline)
 python audio.py AUDIO_FILE [OPTIONS]
@@ -185,10 +186,10 @@ Setup complete! Process audio with:
 
 Models load directly from cache at `~/.cache/huggingface/hub/`. `audio.py` runs completely offline.
 
-If a required model is missing, `audio.py` will tell you exactly which `setup.py` command to run:
+If a required model is missing, `audio.py` will prompt you to run `setup.py`:
 ```
 Error: Whisper large model not found in cache.
-Run 'python setup.py --update large' to download it.
+Run 'python setup.py' to download models.
 ```
 
 ### Output Format
@@ -233,7 +234,7 @@ voice-journey/
    - Requires internet and a Hugging Face token
 
 2. **"Whisper X model not found in cache"**:
-   - Run `python setup.py --whisper-sizes <size>` to download the specific model
+   - Run `python setup.py --update <size>` to download the specific model (e.g., `--update large`)
 
 3. **Hugging Face Access Denied (401/403)**:
    - Verify you've accepted model licenses at hf.co/pyannote/speaker-diarization-3.1

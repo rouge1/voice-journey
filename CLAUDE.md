@@ -16,10 +16,10 @@ pip install -r requirements.txt
 
 # First-time model setup (requires internet)
 python setup.py                                     # Download default models (diarization + medium whisper)
-python setup.py --update medium large      # Download specific whisper sizes
-python setup.py --whisper-sizes all                  # Download all whisper sizes
-python setup.py --token YOUR_TOKEN                   # Pass HF token non-interactively
-python setup.py --list                               # Show models and cache status
+python setup.py --update medium large turbo         # Download specific whisper sizes
+python setup.py --update all                        # Download all whisper sizes
+python setup.py --token YOUR_TOKEN                  # Pass HF token non-interactively
+python setup.py --list                              # Show models and cache status
 
 # Audio processing (offline, uses cached models)
 python audio.py audio.wav                            # Process with default medium model
