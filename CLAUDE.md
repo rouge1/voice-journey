@@ -53,7 +53,8 @@ Audio → Pyannote Diarization (CUDA GPU) → Speaker Timeline
 
 ## Common Pitfalls
 
-- **`diarization.speaker_diarization` doesn't exist**: Pyannote's `Pipeline.__call__()` returns an `Annotation` directly. Use `diarization.itertracks()` and `diarization.get_timeline()` — not `diarization.speaker_diarization.itertracks()`.
+- **Pyannote returns `DiarizeOutput`, not `Annotation`**: `Pipeline.__call__()` returns a `DiarizeOutput` dataclass. Access the annotation via `diarization.speaker_diarization.itertracks()` and `diarization.speaker_diarization.get_timeline()`.
+- **Don't set `HF_HUB_OFFLINE=1`**: It breaks pyannote's `from_pretrained` cache resolution. Let huggingface_hub use cached models automatically without forcing offline mode.
 - **Whisper turbo cache path differs**: The turbo model is `mobiuslabsgmbh/faster-whisper-large-v3-turbo`, not `Systran/faster-whisper-turbo`. See `models.py:_whisper_cache_path()`.
 - **Heavy imports are slow**: `torch`, `pyannote.audio`, `faster_whisper` take ~10s to import. Always validate inputs and check cache *before* importing them.
 - **`audio_file` is a required positional arg**: To support `--list` without requiring a file, check `sys.argv` before `argparse.parse_args()`.

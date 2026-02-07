@@ -58,8 +58,8 @@ if not os.path.exists(args.audio_file):
     print(f"Error: Audio file '{args.audio_file}' not found!")
     sys.exit(1)
 
-# Force offline mode now that we've verified models are cached
-os.environ["HF_HUB_OFFLINE"] = "1"
+# Don't set HF_HUB_OFFLINE - huggingface_hub will use cached models automatically
+# and fall back gracefully if there's no internet connection
 
 # ==================== SETUP ====================
 import torch

@@ -2,18 +2,12 @@
 # Install with: conda install --file conda_packages.txt
 #
 # This creates the complete environment with CUDA support
-# Date: February 7, 2026
+# Then install pip packages: pip install -r requirements.txt
 
 # PyTorch with CUDA support
-pytorch>=2.7.1
-torchaudio>=2.7.1
+pytorch
+torchaudio
 pytorch-cuda=12.4
 
 # Audio processing
-ffmpeg>=6.0
-
-# Additional dependencies (may be available via conda)
-# If not available, will be installed via pip
-pyannote-audio>=4.0.3
-faster-whisper>=1.2.1</content>
-<parameter name="filePath">/data/python/voice-journey/conda_packages.txt
+ffmpeg
