@@ -8,6 +8,7 @@ Run setup.py first to download models.
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*torch.load.*weights_only.*")
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 import sys
 import os
@@ -92,9 +93,13 @@ print(f"\nLoading audio: {args.audio_file}")
 print("Running diarization...")
 diarization = diarizer(args.audio_file)
 
-# Get audio duration from diarization results
-timeline_extent = diarization.speaker_diarization.get_timeline().extent()
-duration_seconds = timeline_extent.duration
+# Get true audio duration from file
+waveform, sample_rate = torchaudio.load(args.audio_file)
+file_duration = waveform.shape[1] / sample_rate
+del waveform
+is_short_audio = file_duration < 1.0
+
+duration_seconds = file_duration
 duration = str(timedelta(seconds=int(duration_seconds)))
 print(f"Audio duration: {duration} ({duration_seconds:.2f} seconds)")
 
@@ -107,18 +112,19 @@ for turn, _, speaker in diarization.speaker_diarization.itertracks(yield_label=T
     for t in range(int(turn.start * 10), int(turn.end * 10)):
         speaker_map[round(t / 10, 2)] = speaker
 
-# Create timeline visualization
-print("\nGenerating timeline visualization...")
-timeline = []
-for t in range(0, int(duration_seconds)):
-    has_speaker = any(
-        speaker_map.get(round(sub_t / 10, 2), None)
-        for sub_t in range(t * 10, (t + 1) * 10)
-        if speaker_map.get(round(sub_t / 10, 2), None) not in [None, "UNKNOWN"]
-    )
-    timeline.append("x" if has_speaker else "_")
-timeline_str = "".join(timeline)
-print(f"Timeline (1 char = 1 sec): {timeline_str}")
+# Create timeline visualization (deferred for short audio until after transcription)
+if not is_short_audio:
+    print("\nGenerating timeline visualization...")
+    timeline = []
+    for t in range(0, max(1, int(duration_seconds))):
+        has_speaker = any(
+            speaker_map.get(round(sub_t / 10, 2), None)
+            for sub_t in range(t * 10, (t + 1) * 10)
+            if speaker_map.get(round(sub_t / 10, 2), None) not in [None, "UNKNOWN"]
+        )
+        timeline.append("x" if has_speaker else "_")
+    timeline_str = "".join(timeline)
+    print(f"Timeline (1 char = 1 sec): {timeline_str}")
 
 print("Running transcription...")
 try:
@@ -132,6 +138,15 @@ except RuntimeError as e:
             "GPU out of memory! Try a smaller model (--model tiny or small) or set device='cpu'"
         )
     raise
+
+# Materialize segments so we can check if Whisper found speech
+segments = list(segments)
+
+# Deferred timeline for short audio
+if is_short_audio:
+    print("\nGenerating timeline visualization...")
+    timeline_str = "x" if segments else "_"
+    print(f"Timeline (1 char = 1 sec): {timeline_str}")
 
 # Clear GPU memory after transcription
 torch.cuda.empty_cache()
