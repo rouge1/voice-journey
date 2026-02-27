@@ -135,7 +135,8 @@ def list_models_with_updates():
     if updates_info and 'diarization' in updates_info:
         info = updates_info['diarization']
         if 'error' in info:
-            status = f"❌ Error: {info['error']}"
+            cached = is_diarization_cached()
+            status = ("✅ Cached" if cached else "❌ Not cached") + " (⚠️ update check failed, offline?)"
         else:
             cached_status = "✅ Cached" if info['cached'] else "❌ Not cached"
             update_status = " (⚠️ Update available)" if info['has_update'] else " (✅ Up to date)" if info['cached'] else ""
@@ -153,7 +154,8 @@ def list_models_with_updates():
         if updates_info and f'whisper_{size}' in updates_info:
             info = updates_info[f'whisper_{size}']
             if 'error' in info:
-                status = f"❌ Error: {info['error']}"
+                cached = is_whisper_cached(size)
+                status = ("✅ Cached" if cached else "❌ Not cached") + " (⚠️ update check failed, offline?)"
             else:
                 cached_status = "✅ Cached" if info['cached'] else "❌ Not cached"
                 update_status = " (⚠️ Update available)" if info['has_update'] else " (✅ Up to date)" if info['cached'] else ""
