@@ -36,6 +36,43 @@ RIFF_INFO_NAMES = {
 }
 
 
+def read_riff_info(path):
+    """Parse RIFF LIST/INFO chunk directly. Returns dict of tag→value string."""
+    tags = {}
+    try:
+        with open(path, "rb") as f:
+            header = f.read(12)
+            if len(header) < 12:
+                return tags
+            riff_id, _, wave_id = struct.unpack_from("<4sI4s", header)
+            if riff_id != b"RIFF" or wave_id != b"WAVE":
+                return tags
+            while True:
+                chunk_hdr = f.read(8)
+                if len(chunk_hdr) < 8:
+                    break
+                chunk_id, chunk_size = struct.unpack_from("<4sI", chunk_hdr)
+                chunk_data = f.read(chunk_size)
+                if chunk_size % 2:
+                    f.read(1)
+                if chunk_id == b"LIST" and len(chunk_data) >= 4 and chunk_data[:4] == b"INFO":
+                    offset = 4
+                    while offset + 8 <= len(chunk_data):
+                        sub_id = chunk_data[offset:offset+4].decode("latin-1")
+                        sub_size = struct.unpack_from("<I", chunk_data, offset + 4)[0]
+                        offset += 8
+                        value = chunk_data[offset:offset+sub_size]
+                        offset += sub_size
+                        if sub_size % 2:
+                            offset += 1
+                        value = value.rstrip(b"\x00").decode("latin-1", errors="replace").strip()
+                        if value:
+                            tags[sub_id] = value
+    except (OSError, struct.error):
+        pass
+    return tags
+
+
 def get_wav_real_duration(path):
     """Compute WAV duration from actual file size, ignoring header's stated data size.
 
@@ -96,7 +133,9 @@ def get_wav_real_duration(path):
 def format_duration(seconds):
     if seconds is None:
         return "unknown"
-    td = timedelta(seconds=int(seconds))
+    if seconds < 1.0:
+        return f"0:00 ({seconds:.2f}s)"
+    td = timedelta(seconds=round(seconds))
     total_seconds = int(td.total_seconds())
     minutes, secs = divmod(total_seconds, 60)
     hours, minutes = divmod(minutes, 60)
@@ -132,25 +171,36 @@ def print_wav_info(path):
         if channels:
             print(f"  Channels:    {channels}")
 
-    # Tags
+    # Tags — mutagen (ID3) + raw RIFF INFO fallback
     tags = audio.tags
-    if not tags:
+    riff_tags = read_riff_info(path)
+
+    if not tags and not riff_tags:
         print("  Tags:        (none)")
     else:
         print("  Tags:")
-        for key, value in tags.items():
-            # RIFF INFO values are lists; ID3 values have .text attribute
-            if hasattr(value, "text"):
-                display = ", ".join(str(v) for v in value.text)
-            elif isinstance(value, list):
-                display = ", ".join(str(v) for v in value)
-            else:
-                display = str(value)
+        if tags:
+            for key, value in tags.items():
+                # RIFF INFO values are lists; ID3 values have .text attribute
+                if hasattr(value, "text"):
+                    display = ", ".join(str(v) for v in value.text)
+                elif isinstance(value, list):
+                    display = ", ".join(str(v) for v in value)
+                else:
+                    display = str(value)
+                label = RIFF_INFO_NAMES.get(key, "")
+                if label:
+                    print(f"    {key} ({label}):".ljust(24) + f" {display}")
+                else:
+                    print(f"    {key}:".ljust(24) + f" {display}")
+        for key, value in riff_tags.items():
+            if tags and key in tags:
+                continue  # already shown via mutagen
             label = RIFF_INFO_NAMES.get(key, "")
             if label:
-                print(f"    {key} ({label}):".ljust(24) + f" {display}")
+                print(f"    {key} ({label}):".ljust(24) + f" {value}")
             else:
-                print(f"    {key}:".ljust(24) + f" {display}")
+                print(f"    {key}:".ljust(24) + f" {value}")
 
     print("  ---")
 

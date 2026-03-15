@@ -135,7 +135,7 @@ del waveform
 is_short_audio = file_duration < 1.0
 
 duration_seconds = file_duration
-duration = str(timedelta(seconds=int(duration_seconds)))
+duration = str(timedelta(seconds=round(duration_seconds)))
 print(f"Audio duration: {duration} ({duration_seconds:.2f} seconds)")
 
 # Clear GPU memory after diarization
