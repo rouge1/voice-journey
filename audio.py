@@ -90,7 +90,42 @@ transcriber = WhisperModel(actual_model, device=device, compute_type=compute_typ
 
 print(f"\nLoading audio: {args.audio_file}")
 
-print("Running diarization...")
+# Show WAV metadata
+try:
+    from wav_tags import get_wav_real_duration, format_duration, RIFF_INFO_NAMES
+    from mutagen import File as MutagenFile
+    _audio_meta = MutagenFile(args.audio_file)
+    if _audio_meta is not None:
+        _info = getattr(_audio_meta, "info", None)
+        if _info:
+            _real_secs = get_wav_real_duration(args.audio_file)
+            _dur = format_duration(_real_secs if _real_secs is not None else getattr(_info, "length", None))
+            _sr = getattr(_info, "sample_rate", None)
+            _ch = getattr(_info, "channels", None)
+            print(f"  Duration:    {_dur}")
+            if _sr:
+                print(f"  Sample rate: {_sr} Hz")
+            if _ch:
+                print(f"  Channels:    {_ch}")
+        _tags = _audio_meta.tags
+        if _tags:
+            print("  Tags:")
+            for _key, _val in _tags.items():
+                if hasattr(_val, "text"):
+                    _display = ", ".join(str(v) for v in _val.text)
+                elif isinstance(_val, list):
+                    _display = ", ".join(str(v) for v in _val)
+                else:
+                    _display = str(_val)
+                _label = RIFF_INFO_NAMES.get(_key, "")
+                if _label:
+                    print(f"    {_key} ({_label}):".ljust(24) + f" {_display}")
+                else:
+                    print(f"    {_key}:".ljust(24) + f" {_display}")
+except Exception:
+    pass  # wav_tags unavailable or file unreadable — continue silently
+
+print("\nRunning diarization...")
 diarization = diarizer(args.audio_file)
 
 # Get true audio duration from file

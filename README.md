@@ -216,6 +216,7 @@ voice-journey/
 ├── models.py              # Shared model constants, cache paths, list_models()
 ├── setup.py               # Online: download models, HF token setup
 ├── audio.py               # Offline: speaker diarization + transcription
+├── wav_tags.py            # WAV metadata utility (duration, sample rate, tags); CLI accepts a file or directory
 ├── requirements.txt       # Python pip dependencies
 ├── conda_packages.txt     # Conda environment packages
 ├── CLAUDE.md              # AI assistant guidance

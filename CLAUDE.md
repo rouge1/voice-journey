@@ -34,6 +34,7 @@ python audio.py --list                               # Show models and cache sta
 - `models.py` — Shared model constants, cache paths, `list_models()` utility
 - `setup.py` — Online: downloads models, guides HF token setup
 - `audio.py` — Offline: processes audio, assumes models are cached
+- `wav_tags.py` — WAV metadata utility: `get_wav_real_duration()`, `format_duration()`, `RIFF_INFO_NAMES`; also a standalone CLI (`python wav_tags.py <file.wav>` or `python wav_tags.py <dir>`) for inspecting a single file or scanning a directory
 
 **Processing Pipeline:**
 ```
@@ -59,6 +60,8 @@ Audio → Pyannote Diarization (CUDA GPU) → Speaker Timeline
 - **Heavy imports are slow**: `torch`, `pyannote.audio`, `faster_whisper` take ~10s to import. Always validate inputs and check cache *before* importing them.
 - **`audio_file` is a required positional arg**: To support `--list` without requiring a file, check `sys.argv` before `argparse.parse_args()`.
 - **cuDNN conflicts**: Running both diarization (GPU) and whisper (GPU) can cause cuDNN errors. Whisper runs on CPU with int8 to avoid this.
+- **WAV streaming-mode duration is wrong**: SDR/intercept tools often write `0x00000000` or `0xFFFFFFFF` as the `data` chunk size (streaming mode), so `mutagen` reports 0:00 or thousands of hours. Use `get_wav_real_duration()` from `wav_tags.py`, which ignores the header's stated size and computes duration from actual file size minus the data-chunk offset.
+- **`wav_tags` import in `audio.py` is lazy/optional**: The metadata block is wrapped in `try/except Exception: pass` so `audio.py` still runs if `mutagen` isn't installed or the file isn't a standard WAV.
 
 ## Hardware Requirements
 
