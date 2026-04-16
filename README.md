@@ -10,6 +10,9 @@ A project for speaker diarization using PyTorch and the pyannote.audio library. 
 - Offline-first operation with cached models
 - Separate setup/processing workflow (online setup, offline processing)
 - Pre-flight cache validation with actionable error messages
+- WAV metadata inspection (duration, sample rate, ID3 tags, and raw RIFF INFO tags) via `wav_tags.py`
+- Robust duration handling for streaming/SDR-style WAVs with broken data-chunk sizes
+- `--list` shows cache status even when offline (no internet required)
 - Flexible command-line interface with multiple options
 
 ## Hardware Requirements
@@ -216,7 +219,7 @@ voice-journey/
 ├── models.py              # Shared model constants, cache paths, list_models()
 ├── setup.py               # Online: download models, HF token setup
 ├── audio.py               # Offline: speaker diarization + transcription
-├── wav_tags.py            # WAV metadata utility (duration, sample rate, tags); CLI accepts a file or directory
+├── wav_tags.py            # WAV metadata utility (duration, sample rate, tags, RIFF INFO); CLI accepts a file or directory
 ├── requirements.txt       # Python pip dependencies
 ├── conda_packages.txt     # Conda environment packages
 ├── CLAUDE.md              # AI assistant guidance
